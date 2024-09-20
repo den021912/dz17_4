@@ -1,29 +1,59 @@
-from app.backend.db import Base
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, Float
-from sqlalchemy.orm import relationship
+from fastapi import APIRouter, Depends, status, HTTPException
+from sqlalchemy.orm import Session
+from app.backend.db_depends import get_db
+from typing import Annotated
+from app.models import *
+from app.schemas import CreateUser, UpdateUser
+from sqlalchemy import insert, select, update, delete
+from slugify import slugify
 
-class User(Base):
-    __tablename__ = 'users'
-    __table_args__ = {'keep_existing': True}
-    id = Column(Integer, primary_key = True, index = True)
-    username = Column(String)
-    slug = Column(String, unique = True, index = True)
-    # description = Column(String)
-    # price = Column(Integer)
-    # image_url = Column(String)
-    # stock = Column(Integer)
-    # user_id = Column(Integer, ForeignKey('categories.id'))
-    # rating = Column(Float)
-    # is_active = Column(Boolean, default = True)
-    firstname = Column(String)
-    lastname = Column(String)
-    age = Column(Integer)
+router = APIRouter(prefix='/user', tags=['user'])
+
+@router.get('/all_users')
+async def all_users(db:Annotated[Session,Depends(get_db)]):
+    users = db.scalars(select(User)).all()
+    return users
+
+@router.get('/user_id')
+async def user_by_id(db:Annotated[Session,Depends(get_db)],user_id: int):
+    user = db.scalars(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User was not found')
+    return user
+
+@router.post('/create')
+async def craete_user(db:Annotated[Session,Depends(get_db)],crt_user: CreateUser):
+    db.execute(insert(User).values(username=crt_user.username, firstname=crt_user.firstname, lastname=crt_user.lastname,
+                                   age=crt_user.age, slug=slugify(crt_user.username)))
+    db.commit()
+    return {'status_code': status.HTTP_201_CREATED,
+            'transaction': 'Successful'}
+
+@router.put("/update")
+async def update_user(db: Annotated[Session, Depends(get_db)], user_id: int, upd_user: UpdateUser):
+    user = db.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User was not found")
+
+    db.execute(update(User).where(User.id == user_id).values(username=upd_user.username,
+                firstname=upd_user.firstname, lastname=upd_user.lastname, age=upd_user.age, slug=slugify(upd_user.username)))
+    db.commit()
+    return {'status_code': status.HTTP_200_OK,
+            'transaction': 'User update is successful!'}
 
 
-    task = relationship('Task', back_populates = 'users')
+@router.delete("/delete")
+async def delete_user(db: Annotated[Session, Depends(get_db)], user_id: int):
+    user = db.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User was not found")
 
-from sqlalchemy.schema import CreateTable
-print(CreateTable(User.__table__))
+    db.execute(delete(User).where(User.id == user_id))
+
+    db.commit()
+    return {"status_code": status.HTTP_200_OK, 'transaction': 'User delete is successful!'}
 
 
 
